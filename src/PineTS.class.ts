@@ -22,6 +22,24 @@ function getTimeframeDurationMs(timeframe: string | undefined): number {
     return TIMEFRAME_DURATION_MS[timeframe] ?? TIMEFRAME_DURATION_MS[timeframe.toUpperCase()] ?? 86_400_000;
 }
 
+const DEFAULT_SYMINFO: ISymbolInfo = {
+    tickerid: '', ticker: '', main_tickerid: '', prefix: '',
+    root: '', description: '', isin: '', current_contract: '',
+    type: 'stock', currency: 'USD', basecurrency: '', country: '',
+    timezone: 'UTC', session: '0930-1600', volumetype: 'base',
+    mintick: 0.01, minmove: 1, pricescale: 100, pointvalue: 1, mincontract: 1,
+    employees: 0, industry: '', sector: '', shareholders: 0,
+    shares_outstanding_float: 0, shares_outstanding_total: 0,
+    expiration_date: 0,
+    recommendations_buy: 0, recommendations_buy_strong: 0,
+    recommendations_date: 0, recommendations_hold: 0,
+    recommendations_sell: 0, recommendations_sell_strong: 0,
+    recommendations_total: 0,
+    target_price_average: 0, target_price_date: 0,
+    target_price_estimates: 0, target_price_high: 0,
+    target_price_low: 0, target_price_median: 0,
+};
+
 /**
  * This class is a wrapper for the Pine Script language, it allows to run Pine Script code in a JavaScript environment
  */
@@ -94,6 +112,15 @@ export class PineTS {
      */
     public setMaxLoops(maxLoops: number) {
         this._maxLoops = maxLoops;
+    }
+
+    /**
+     * Set symbol information for scripts that access syminfo.tickerid etc.
+     * Merges provided fields over defaults — callers only need to set
+     * the fields they care about.
+     */
+    public setSymbolInfo(info: Partial<ISymbolInfo>): void {
+        this._syminfo = { ...DEFAULT_SYMINFO, ...this._syminfo, ...info } as ISymbolInfo;
     }
 
     private _alertMode: 'realtime' | 'all' = 'realtime';
@@ -262,6 +289,17 @@ export class PineTS {
                             resolve(true);
                         });
                 } else {
+                    // No provider — generate default syminfo from tickerId
+                    if (tickerId) {
+                        this._syminfo = {
+                            ...DEFAULT_SYMINFO,
+                            tickerid: tickerId,
+                            ticker: tickerId,
+                            main_tickerid: tickerId,
+                            root: tickerId,
+                            description: tickerId,
+                        };
+                    }
                     this._ready = true;
                     resolve(true);
                 }
