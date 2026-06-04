@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import PineTS from '../../src/index';
+import { PineTS } from 'index';
 
 const SAMPLE_DATA = Array.from({ length: 50 }, (_, i) => ({
     open: 100 + i, high: 102 + i, low: 99 + i, close: 101 + i,

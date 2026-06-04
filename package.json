@@ -71,6 +71,7 @@
         "build:prod:browser-es": "cross-env BUILD=prod FORMAT=browser-es rollup -c ./rollup.config.js",
         "build:prod:es": "cross-env BUILD=prod rollup -c ./rollup.config.js",
         "prepublishOnly": "npm run build:prod:all",
+        "build:qf": "npm run generate:ta-index && npm run generate:math-index && npm run generate:array-index && npm run generate:input-index && npm run generate:request-index && npm run generate:map-index && npm run generate:matrix-index && cross-env BUILD=prod FORMAT=browser-es rollup -c ./rollup.config.js",
         "knip": "knip"
     },
     "author": "Alaa-eddine KADDOURI",
