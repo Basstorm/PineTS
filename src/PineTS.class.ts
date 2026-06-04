@@ -3,6 +3,7 @@
 import { transpile } from '@pinets/transpiler/index';
 import { VIEWPORT_DEPENDENT_BUILTINS } from '@pinets/transpiler/settings';
 import { IProvider, ISymbolInfo } from './marketData/IProvider';
+import type { InputDef } from './namespaces/input/types';
 import { Context } from './Context.class';
 import { Series } from './Series';
 import { Indicator } from './Indicator';
@@ -38,6 +39,15 @@ const DEFAULT_SYMINFO: ISymbolInfo = {
     target_price_average: 0, target_price_date: 0,
     target_price_estimates: 0, target_price_high: 0,
     target_price_low: 0, target_price_median: 0,
+};
+
+export type IndicatorMetadata = {
+    overlay: boolean;
+    title: string;
+    shorttitle: string;
+    precision: number;
+    format: string;
+    inputs: InputDef[];
 };
 
 /**
@@ -136,6 +146,15 @@ export class PineTS {
         this._alertMode = mode;
     }
 
+    /**
+     * Get indicator metadata from the last run.
+     * Returns overlay, title, shorttitle, precision, format, and input definitions.
+     * Must be called after run() completes.
+     */
+    public getMetadata(): IndicatorMetadata | null {
+        return this._lastMetadata;
+    }
+
     // ── Visible-range / host environment ────────────────────────────────
     // Values come from the host (UI). When unset, Pine built-ins like
     // `chart.left_visible_bar_time` fall back to marketData-derived defaults
@@ -154,6 +173,7 @@ export class PineTS {
     private _lastRunViewport: { left?: number; right?: number } = {};
     private _lastResult: Context | null = null;
     private _lastPineTSCode: Indicator | Function | String | null = null;
+    private _lastMetadata: IndicatorMetadata | null = null;
 
     /**
      * Set the visible range of bars from the host (e.g. chart UI viewport).
@@ -546,6 +566,16 @@ export class PineTS {
             // updateTail() will fall back to _removeLastResult on this context.
             await this._executeIterations(context, this._transpiledCode, startIdx, endIdx);
         }
+
+        // Cache indicator metadata for getMetadata()
+        this._lastMetadata = {
+            overlay: context.indicator?.overlay ?? false,
+            title: context.indicator?.title ?? '',
+            shorttitle: context.indicator?.shorttitle ?? '',
+            precision: context.indicator?.precision ?? 10,
+            format: context.indicator?.format ?? 'inherit',
+            inputs: context.inputRegistry ?? [],
+        };
 
         return context;
     }
