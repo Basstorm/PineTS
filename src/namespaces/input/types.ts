@@ -14,3 +14,15 @@ export type InputOptions = {
     display?: string;
     active?: boolean;
 };
+
+export type InputDef = {
+    type: string;
+    title: string;
+    defval: any;
+    minval?: number;
+    maxval?: number;
+    step?: number;
+    options?: any[];
+    group?: string;
+    tooltip?: string;
+};

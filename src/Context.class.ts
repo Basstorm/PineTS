@@ -30,6 +30,7 @@ import { PolylineHelper } from './namespaces/polyline/PolylineHelper';
 import { TableHelper } from './namespaces/table/TableHelper';
 import { Ticker } from './namespaces/Ticker';
 import type { IndicatorOptions } from './types/PineTypes';
+import type { InputDef } from './namespaces/input/types';
 
 export class Context {
     public data: any = {
@@ -134,6 +135,8 @@ export class Context {
     public pineTSCode: Function | String;
 
     public inputs: Record<string, any> = {};
+    public inputRegistry: InputDef[] = [];
+    public _inputTitlesSeen: Set<string> = new Set();
 
     constructor({
         marketData,
