@@ -1423,6 +1423,19 @@ export function finalizeStrategyBar(context: any): void {
     const closePrice = Series.from(context.data.close).get(0);
     markToMarket(context, closePrice);
     updateEquityPeaks(context, highPrice, lowPrice);
+
+    // [QF] Collect per-bar equity snapshot for backtest equity curve.
+    // At this point equity is mark-to-market at close after all fills.
+    if (!context.__equityCurve) context.__equityCurve = [];
+    const openTime = Series.from(context.data.openTime).get(0);
+    const s = context.strategy;
+    context.__equityCurve.push({
+        time: openTime,
+        equity: s.equity,
+        cash: s.equity - (s.openprofit ?? 0),
+        invested: s.openprofit ?? 0,
+        openPositions: s.opentrades.length,
+    });
 }
 
 /**
