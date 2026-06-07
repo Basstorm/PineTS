@@ -368,9 +368,12 @@ export class PineTS {
      * @param pineTSCode
      * @param periods
      * @param pageSize
+     * @param inputOverrides Optional input value overrides keyed by input title.
+     *   When provided, these values take precedence over Pine Script input() defaults.
+     *   Keys must match the `title` argument of input.*() calls in the script.
      * @returns Context if pageSize is 0 or undefined, or AsyncGenerator<Context> if pageSize > 0
      */
-    public run(pineTSCode: Indicator | Function | String, periods?: number, pageSize?: number): Promise<Context> | AsyncGenerator<Context> {
+    public run(pineTSCode: Indicator | Function | String, periods?: number, pageSize?: number, inputOverrides?: Record<string, any>): Promise<Context> | AsyncGenerator<Context> {
         let code: Function | String;
         let inputs: Record<string, any> = {};
 
@@ -379,6 +382,10 @@ export class PineTS {
             inputs = pineTSCode.inputs || {};
         } else {
             code = pineTSCode;
+        }
+        // Merge explicit input overrides (from host/API) on top of Indicator inputs
+        if (inputOverrides) {
+            inputs = { ...inputs, ...inputOverrides };
         }
 
         if (pageSize && pageSize > 0) {
