@@ -919,6 +919,7 @@ export class PineTS {
         const snapshot = (context as any)._varSnapshot;
         if (snapshot) {
             this._restoreVarState(context, snapshot);
+            this._restorePlots(context, snapshot.plots);
         } else {
             // No snapshot available (context from runPretranspiled or single-bar
             // _runComplete) — fall back to pop-based rollback.
@@ -1082,6 +1083,7 @@ export class PineTS {
         // Also snapshot result and data array lengths
         snapshot.resultLength = this._getResultLength(context.result);
         snapshot.dataLength = context.data.close?.data?.length ?? 0;
+        snapshot.plots = this._snapshotPlots(context);
 
         return snapshot;
     }
@@ -1122,6 +1124,31 @@ export class PineTS {
                 if (snapshot.lctx[i]) restoreContainer(lctx, snapshot.lctx[i]);
                 i++;
             });
+        }
+    }
+
+    private _snapshotPlots(context: Context): any {
+        const snapshot: any = {};
+        for (const key in context.plots) {
+            const plot = context.plots[key];
+            if (plot && Array.isArray(plot.data)) {
+                snapshot[key] = plot.data.length;
+            }
+        }
+        return snapshot;
+    }
+
+    private _restorePlots(context: Context, snapshot: any): void {
+        if (!snapshot) return;
+        for (const key in context.plots) {
+            if (!(key in snapshot)) {
+                delete context.plots[key];
+                continue;
+            }
+            const plot = context.plots[key];
+            if (plot && Array.isArray(plot.data)) {
+                plot.data.length = snapshot[key];
+            }
         }
     }
 

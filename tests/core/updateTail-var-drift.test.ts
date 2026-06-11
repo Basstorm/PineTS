@@ -134,4 +134,34 @@ describe('updateTail: var state drift fix', () => {
             expect(n).toBe(N);
         }
     });
+
+    it('plot arrays rollback before appending a new candle', async () => {
+        const N = 5;
+        const candles = Array.from({ length: N }, (_, i) => makeCandle(i));
+        const next = makeCandle(N);
+        const provider = {
+            getMarketData: async (_ticker: string, _tf: string, _limit?: number, sDate?: number) => {
+                const lastOpenTime = candles[N - 1].openTime;
+                if (sDate !== undefined && sDate >= lastOpenTime) {
+                    return [candles[N - 1], next];
+                }
+                return candles;
+            },
+            getSymbolInfo: async () => null,
+        };
+
+        const pine = new PineTS(provider as any, 'TEST', '1');
+        await pine.ready();
+        const ctx = await pine.run(($: any) => {
+            const { close } = $.data;
+            const { plot } = $.pine;
+            plot(close, 'close');
+        });
+
+        expect(ctx.plots['close'].data.length).toBe(N);
+        const updated = await pine.updateTail(ctx);
+        expect(updated).toBe(true);
+        expect(ctx.plots['close'].data.length).toBe(N + 1);
+        expect(ctx.plots['close'].data[N].value).toBe(next.close);
+    });
 });
