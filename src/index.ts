@@ -19,3 +19,5 @@ export { aggregateCandles, selectSubTimeframe, getAggregationRatio } from './mar
 export type { IndicatorMetadata } from './PineTS.class';
 export type { InputDef } from './namespaces/input/types';
 export { PineTS, Context, Provider, Indicator, PineRuntimeError };
+export type { IPineInput, IPineProp, PineInputType, PineInputDisplay, PinePropType, PreparedScript } from './Indicator';
+export { INDICATOR_PROPS, STRATEGY_PROPS, propsForDeclaration } from './Indicator';

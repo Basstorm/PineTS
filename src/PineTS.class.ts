@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2025 Alaa-eddine KADDOURI
-import { transpile } from '@pinets/transpiler/index';
-import { VIEWPORT_DEPENDENT_BUILTINS } from '@pinets/transpiler/settings';
 import { IProvider, ISymbolInfo } from './marketData/IProvider';
 import type { InputDef } from './namespaces/input/types';
 import { Context } from './Context.class';
@@ -93,6 +91,11 @@ export class PineTS {
         return this._transpiledCode;
     }
 
+    // Tracks the most recently prepared Indicator. Used by the back-compat
+    // forwarding paths (e.g. `usesVisibleRange()`) and by the internal
+    // _initializeContext to surface the original pineTSCode on the Context.
+    private _currentIndicator: Indicator | null = null;
+
     private _isSecondaryContext: boolean = false;
     public markAsSecondary() {
         this._isSecondaryContext = true;
@@ -162,7 +165,9 @@ export class PineTS {
     private _viewportLeft: number | undefined = undefined;
     private _viewportRight: number | undefined = undefined;
 
-    // Set by _transpileCode() via static analysis of the transpiled output.
+    // Set by `run()` from the prepared Indicator. Mirrors the Indicator's own
+    // `usesVisibleRange` flag on the PineTS instance so legacy callers of
+    // `pine.usesVisibleRange()` keep working.
     // True iff the script references any built-in in VIEWPORT_DEPENDENT_BUILTINS.
     // Consumers should check this before re-running on viewport changes — non-
     // viewport-dependent scripts produce identical output regardless of viewport.
@@ -374,26 +379,22 @@ export class PineTS {
      * @returns Context if pageSize is 0 or undefined, or AsyncGenerator<Context> if pageSize > 0
      */
     public run(pineTSCode: Indicator | Function | String, periods?: number, pageSize?: number, inputOverrides?: Record<string, any>): Promise<Context> | AsyncGenerator<Context> {
-        let code: Function | String;
-        let inputs: Record<string, any> = {};
-
-        if (pineTSCode instanceof Indicator) {
-            code = pineTSCode.source;
-            inputs = pineTSCode.inputs || {};
-        } else {
-            code = pineTSCode;
-        }
-        // Merge explicit input overrides (from host/API) on top of Indicator inputs
+        const ind = Indicator.from(pineTSCode as any);
+        this._currentIndicator = ind;
+        // Merge explicit input overrides (from host/API) on top of Indicator inputs [QF]
         if (inputOverrides) {
-            inputs = { ...inputs, ...inputOverrides };
+            ind.inputs = { ...(ind.inputs || {}), ...inputOverrides };
         }
+        // NB: `ind.prepare()` may throw synchronously for malformed Pine /
+        // unparseable JS. We push it inside the async path so the throw
+        // surfaces as a Promise rejection (matches the pre-refactor contract:
+        // `await pine.run(badCode)` rejects, never throws synchronously).
 
         if (pageSize && pageSize > 0) {
-            // livemode is enabled if eDate is undefined and we're using a provider as a source
             const enableLiveStream = typeof this.eDate === 'undefined' && !Array.isArray(this.source);
-            return this._runPaginated(code, inputs, periods, pageSize, enableLiveStream);
+            return this._runPaginated(ind, periods, pageSize, enableLiveStream);
         } else {
-            return this._runComplete(code, inputs, periods);
+            return this._runComplete(ind, periods);
         }
     }
 
@@ -411,15 +412,10 @@ export class PineTS {
         const { live = true, interval = 1000 } = options;
         const pageSize = options.pageSize || this.data.length; // Default pageSize to full data if not provided
 
-        let code: Function | String;
-        let inputs: Record<string, any> = {};
-
-        if (pineTSCode instanceof Indicator) {
-            code = pineTSCode.source;
-            inputs = pineTSCode.inputs || {};
-        } else {
-            code = pineTSCode;
-        }
+        const ind = Indicator.from(pineTSCode as any);
+        this._currentIndicator = ind;
+        // prepare() is deferred to inside _runPaginated so transpile errors
+        // surface as Promise rejections on the stream's `error` event.
 
         const listeners: { [key: string]: Function[] } = { data: [], error: [], warning: [], alert: [] };
         let stopped = false;
@@ -454,7 +450,7 @@ export class PineTS {
 
                 // Pass undefined for periods to include all data
                 // We use the generator version directly to control enableLiveStream
-                const iterator = this._runPaginated(code, inputs, undefined, pageSize, enableLiveStream);
+                const iterator = this._runPaginated(ind, undefined, pageSize, enableLiveStream);
 
                 for await (const ctx of iterator) {
                     if (stopped) break;
@@ -530,7 +526,7 @@ export class PineTS {
         const slices = (transpiledFn as any)._ltfSlices;
         if (slices) (context as any)._ltfTruncatedBodies = slices;
 
-        await this._executeIterations(context, this._transpiledCode, this.data.length - periods, this.data.length);
+        await this._executeIterations(context, transpiledFn, this.data.length - periods, this.data.length);
 
         return context;
     }
@@ -545,18 +541,20 @@ export class PineTS {
      * occurred when var variables were modified in-place during re-execution.
      * @private
      */
-    private async _runComplete(pineTSCode: Function | String, inputs: Record<string, any>, periods?: number): Promise<Context> {
+    private async _runComplete(ind: Indicator, periods?: number): Promise<Context> {
         await this.ready();
         if (!periods) periods = this.data.length;
 
-        const context = this._initializeContext(pineTSCode, inputs, this._isSecondaryContext);
-        this._transpiledCode = this._transpileCode(pineTSCode);
+        const prepared = ind.prepare(this._debugSettings);
+        this._usesVisibleRange = prepared.usesVisibleRange;
+
+        const context = this._initializeContext(ind.source ?? null as any, prepared.inputs, this._isSecondaryContext);
+        this._transpiledCode = prepared.fn;
         // Propagate transpile-time slices (one per request.security_lower_tf
         // call site) onto the Context so the slow path of the LTF runtime
         // can pick the right truncated body to run in the secondary
         // instead of the FULL user script.
-        const slices = (this._transpiledCode as any)._ltfSlices;
-        if (slices) (context as any)._ltfTruncatedBodies = slices;
+        if (prepared.ltfSlices) (context as any)._ltfTruncatedBodies = prepared.ltfSlices;
 
         // Split execution: process all bars except the last, snapshot, then
         // process the last bar. This gives updateTail() a reliable restore
@@ -565,13 +563,13 @@ export class PineTS {
         const endIdx = this.data.length;
 
         if (endIdx - startIdx > 1) {
-            await this._executeIterations(context, this._transpiledCode, startIdx, endIdx - 1);
+            await this._executeIterations(context, prepared.fn, startIdx, endIdx - 1);
             (context as any)._varSnapshot = this._snapshotVarState(context);
-            await this._executeIterations(context, this._transpiledCode, endIdx - 1, endIdx);
+            await this._executeIterations(context, prepared.fn, endIdx - 1, endIdx);
         } else {
             // Single bar: no meaningful pre-last range to snapshot; execute directly.
             // updateTail() will fall back to _removeLastResult on this context.
-            await this._executeIterations(context, this._transpiledCode, startIdx, endIdx);
+            await this._executeIterations(context, prepared.fn, startIdx, endIdx);
         }
 
         // Cache indicator metadata for getMetadata()
@@ -594,8 +592,7 @@ export class PineTS {
      * @private
      */
     private async *_runPaginated(
-        pineTSCode: Function | String,
-        inputs: Record<string, any>,
+        ind: Indicator,
         periods: number | undefined,
         pageSize: number,
         enableLiveStream: boolean = false,
@@ -603,10 +600,12 @@ export class PineTS {
         await this.ready();
         if (!periods) periods = this.data.length;
 
-        const context = this._initializeContext(pineTSCode, inputs, this._isSecondaryContext);
-        this._transpiledCode = this._transpileCode(pineTSCode);
-        const slices = (this._transpiledCode as any)._ltfSlices;
-        if (slices) (context as any)._ltfTruncatedBodies = slices;
+        const prepared = ind.prepare(this._debugSettings);
+        this._usesVisibleRange = prepared.usesVisibleRange;
+
+        const context = this._initializeContext(ind.source ?? null as any, prepared.inputs, this._isSecondaryContext);
+        this._transpiledCode = prepared.fn;
+        if (prepared.ltfSlices) (context as any)._ltfTruncatedBodies = prepared.ltfSlices;
 
         const startIdx = this.data.length - periods;
         let processedUpToIdx = startIdx; // Track what we've fully processed
@@ -1183,6 +1182,11 @@ export class PineTS {
         context.__maxLoops = this._maxLoops;
         context._alertMode = this._alertMode;
 
+        // User-explicit prop overrides flow from the Indicator to the runtime.
+        // Read by Core.indicator() and initializeStrategy/strategy.any() to
+        // merge on top of source-code declaration args.
+        context._propOverrides = this._currentIndicator?.getRuntimePropOverrides() ?? {};
+
         context.pineTSCode = pineTSCode;
         context.isSecondaryContext = isSecondary; // Set secondary context flag
         context.data.close = new Series([]);
@@ -1200,39 +1204,6 @@ export class PineTS {
         context.length = this.data.length;
 
         return context;
-    }
-
-    /**
-     * Transpile the Pine Script code
-     * @private
-     */
-    private _transpileCode(pineTSCode: Function | String): Function {
-        const transformer = transpile.bind(this);
-        const fn = transformer(pineTSCode, this._debugSettings);
-        this._usesVisibleRange = this._detectViewportUsage(fn);
-        return fn;
-    }
-
-    /**
-     * Static analysis on the transpiled function body to detect references to
-     * host-bound built-ins (currently visible-range; extensible via
-     * VIEWPORT_DEPENDENT_BUILTINS). Comments are stripped during pine2js, so
-     * scanning the post-transpile output is comment-safe.
-     *
-     * Why post-transpile (not regex on Pine source): a `chart.left_visible_bar_time`
-     * literal inside a // comment would be a false positive at the source level.
-     * After pine2js, only live code remains.
-     *
-     * Why regex (not AST visitor): `chart` is a reserved namespace in
-     * KNOWN_NAMESPACES — Pine scripts cannot shadow it with a local identifier,
-     * so a whole-word match on `chart.<prop>` is unambiguous.
-     */
-    private _detectViewportUsage(fn: Function): boolean {
-        const body = fn.toString();
-        return VIEWPORT_DEPENDENT_BUILTINS.some((name) => {
-            const escaped = name.replace(/\./g, '\\.');
-            return new RegExp(`\\b${escaped}\\b`).test(body);
-        });
     }
 
     /**
