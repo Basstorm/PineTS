@@ -104,10 +104,10 @@ export class Indicator {
      * NB: cache is keyed by *instance identity*, not by options. If you need
      * different debug settings, create a new Indicator.
      */
-    public prepare(opts: { debug?: boolean; ln?: boolean } = {}): PreparedScript {
+    public prepare(opts: { debug?: boolean; ln?: boolean; lineTracking?: boolean } = {}): PreparedScript {
         if (this._prepared) return this._prepared;
 
-        const fn = transpile(this.source, { debug: !!opts.debug, ln: opts.ln });
+        const fn = transpile(this.source, { debug: !!opts.debug, ln: opts.ln, lineTracking: opts.lineTracking });
 
         const usesVisibleRange = detectViewportUsage(fn);
         const ltfSlices = (fn as any)._ltfSlices;

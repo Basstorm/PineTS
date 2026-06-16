@@ -80,13 +80,14 @@ function getPineTSFromSource(source: string | Function): string {
     }
 }
 
-export function transpile(source: string | Function, options: { debug: boolean; ln?: boolean } = { debug: false, ln: false }): Function {
+export function transpile(source: string | Function, options: { debug: boolean; ln?: boolean; lineTracking?: boolean } = { debug: false, ln: false }): Function {
     // Handle backward compatibility if a boolean is passed (though signature changed)
     if (typeof options === 'boolean') {
         options = { debug: options, ln: true };
     }
 
     const { debug } = options;
+    const needLocations = debug || !!options.lineTracking;
 
     let code = getPineTSFromSource(source);
 
@@ -95,11 +96,11 @@ export function transpile(source: string | Function, options: { debug: boolean; 
 
     const sourceLines = debug ? code.split('\n') : [];
 
-    // Parse the code into an AST
+    // Parse the code into an AST (locations needed for debug comments or line tracking)
     const ast = acorn.parse(code, {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        locations: debug,
+        locations: needLocations,
     });
 
     // Pre-process: Transform all nested arrow functions
