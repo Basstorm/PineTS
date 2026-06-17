@@ -57,7 +57,7 @@ import { runTransformationPass, transformEqualityChecks, propagateAsyncAwait } f
 import { extractPineScriptVersion, pineToJS } from './pineToJS/pineToJS.index';
 import { buildLtfSlices } from './slicing/buildLtfSlices';
 
-function getPineTSFromSource(source: string | Function): string {
+function getPineTSFromSource(source: string | Function, options: { lineTracking?: boolean } = {}): string {
     if (typeof source === 'function') {
         return source.toString();
     } else {
@@ -68,7 +68,7 @@ function getPineTSFromSource(source: string | Function): string {
         }
         if (pineScriptVersion >= 5) {
             //assume it's Pine Script syntax ==> use pineToJS to transpile it
-            const pineToJSResult = pineToJS(source);
+            const pineToJSResult = pineToJS(source, { lineTracking: options.lineTracking });
             if (pineToJSResult.success) {
                 return pineToJSResult.code;
             } else {
@@ -89,7 +89,7 @@ export function transpile(source: string | Function, options: { debug: boolean; 
     const { debug } = options;
     const needLocations = debug || !!options.lineTracking;
 
-    let code = getPineTSFromSource(source);
+    let code = getPineTSFromSource(source, { lineTracking: options.lineTracking });
 
     // Pre-process: Wrap in context function if not already wrapped
     code = wrapInContextFunction(code);

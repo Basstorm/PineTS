@@ -192,7 +192,7 @@ export function runTransformationPass(
     ast: any,
     scopeManager: ScopeManager,
     originalParamName: string,
-    options: { debug: boolean; ln?: boolean; lineTracking?: boolean } = { debug: false, ln: false },
+    options: { debug: boolean; ln?: boolean } = { debug: false, ln: false },
     sourceLines: string[] = []
 ): void {
     const createDebugComment = (originalNode: any): any => {
@@ -211,29 +211,6 @@ export function runTransformationPass(
         return null;
     };
 
-    /** Create `$.__line = N` AST node for runtime line tracking [QF]. */
-    const createLineTracker = (originalNode: any): any => {
-        if (!options.lineTracking || !originalNode.loc) return null;
-        return {
-            type: 'ExpressionStatement',
-            expression: {
-                type: 'AssignmentExpression',
-                operator: '=',
-                left: {
-                    type: 'MemberExpression',
-                    object: { type: 'Identifier', name: originalParamName },
-                    property: { type: 'Identifier', name: '__line' },
-                    computed: false,
-                },
-                right: {
-                    type: 'Literal',
-                    value: originalNode.loc.start.line,
-                    raw: String(originalNode.loc.start.line),
-                },
-            },
-        };
-    };
-
     walk.recursive(ast, scopeManager, {
         Program(node: any, state: ScopeManager, c: any) {
             // state.pushScope('glb');
@@ -246,8 +223,7 @@ export function runTransformationPass(
 
                 const commentNode = createDebugComment(stmt);
                 if (commentNode) newBody.push(commentNode);
-                const lineTracker = createLineTracker(stmt);
-                if (lineTracker) newBody.push(lineTracker);
+                // No lineTracker at Program level — context param not in scope here
 
                 newBody.push(...hoistedStmts);
                 newBody.push(stmt);
@@ -267,8 +243,6 @@ export function runTransformationPass(
 
                 const commentNode = createDebugComment(stmt);
                 if (commentNode) newBody.push(commentNode);
-                const lineTracker = createLineTracker(stmt);
-                if (lineTracker) newBody.push(lineTracker);
 
                 newBody.push(...hoistedStmts);
                 newBody.push(stmt);

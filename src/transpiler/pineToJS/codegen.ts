@@ -19,18 +19,20 @@ export class CodeGenerator {
     private sourceLines: string[];
     private lastCommentedLine: number;
     private includeSourceComments: boolean;
+    private lineTracking: boolean;
     private paramRenameCounter: number;
     // Maps user-defined function names to their ordered parameter names.
     // Used to resolve named arguments to correct positional slots.
     private functionParams: Map<string, string[]>;
-    constructor(options: { indentStr?: string; sourceCode?: string; includeSourceComments?: boolean } = {}) {
+    constructor(options: { indentStr?: string; sourceCode?: string; includeSourceComments?: boolean; lineTracking?: boolean } = {}) {
         this.indent = 0;
         this.indentStr = options.indentStr || '  ';
         this.output = [];
         this.sourceCode = options.sourceCode || null;
         this.sourceLines = this.sourceCode ? this.sourceCode.split('\n') : [];
         this.lastCommentedLine = -1;
-        this.includeSourceComments = options.includeSourceComments || false; // default false
+        this.includeSourceComments = options.includeSourceComments || false;
+        this.lineTracking = options.lineTracking || false;
         this.paramRenameCounter = 0;
         this.functionParams = new Map();
     }
@@ -346,6 +348,11 @@ export class CodeGenerator {
         // Emit source comment if line information is available and enabled
         if (this.includeSourceComments && node._line && this.sourceLines.length > 0) {
             this.writeSourceComment(node._line);
+        }
+        // Inject globalThis.__pineLine = N for runtime error line tracking [QF]
+        if (this.lineTracking && node._line) {
+            this.write(this.indentStr.repeat(this.indent));
+            this.write(`globalThis.__pineLine = ${node._line};\n`);
         }
 
         switch (node.type) {
