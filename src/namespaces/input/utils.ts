@@ -23,18 +23,30 @@ const INPUT_ARGS_TYPES = {
 };
 
 export function parseInputOptions(args: any[]): Partial<InputOptions> {
-    return parseArgsForPineParams<Partial<InputOptions>>(args, INPUT_SIGNATURES, INPUT_ARGS_TYPES);
+    // Pop the transpiler-injected `{ __varId }` sentinel if present (always the
+    // last arg — added after param-wrapping, so it's a raw object literal). A
+    // Series or a real options object won't carry an own `__varId` property.
+    let varId: string | undefined;
+    const last = args[args.length - 1];
+    if (last && typeof last === 'object' && Object.prototype.hasOwnProperty.call(last, '__varId')) {
+        varId = (last as any).__varId;
+        args = args.slice(0, -1);
+    }
+    const options = parseArgsForPineParams<Partial<InputOptions>>(args, INPUT_SIGNATURES, INPUT_ARGS_TYPES);
+    if (varId !== undefined) options.__varId = varId;
+    return options;
 }
 
 export function resolveInput(context: any, options: Partial<InputOptions>, callerType: string = 'any') {
-    // Register input definition (first call per title only)
+    // Register input definition (first call per title only) [QF]
     if (context.inputRegistry) {
-        const regTitle = options.title || `__anon_${context.inputRegistry.length}`;
-        if (!context._inputTitlesSeen.has(regTitle)) {
-            context._inputTitlesSeen.add(regTitle);
+        const regKey = options.__varId || options.title || `__anon_${context.inputRegistry.length}`;
+        if (!context._inputTitlesSeen.has(regKey)) {
+            context._inputTitlesSeen.add(regKey);
             context.inputRegistry.push({
                 type: callerType,
-                title: regTitle,
+                title: options.title ?? regKey,
+                varId: options.__varId,
                 defval: options.defval,
                 ...(options.minval !== undefined && { minval: options.minval }),
                 ...(options.maxval !== undefined && { maxval: options.maxval }),
@@ -46,11 +58,15 @@ export function resolveInput(context: any, options: Partial<InputOptions>, calle
         }
     }
 
-    // If we have a runtime input value for this title, use it
+    // Override resolution, PRIMARY → fallback:
+    //   1. by varId   — the variable name; robust to empty/duplicate titles
+    //   2. by title   — back-compat (legacy constructor `inputs` map)
+    //   3. source default
+    if (options.__varId && context.inputs && context.inputs[options.__varId] !== undefined) {
+        return context.inputs[options.__varId];
+    }
     if (options.title && context.inputs && context.inputs[options.title] !== undefined) {
         return context.inputs[options.title];
     }
-
-    // Otherwise return default value
     return options.defval;
 }
