@@ -62,11 +62,30 @@ export function resolveInput(context: any, options: Partial<InputOptions>, calle
     //   1. by varId   — the variable name; robust to empty/duplicate titles
     //   2. by title   — back-compat (legacy constructor `inputs` map)
     //   3. source default
+    let resolved: any = undefined;
     if (options.__varId && context.inputs && context.inputs[options.__varId] !== undefined) {
-        return context.inputs[options.__varId];
+        resolved = context.inputs[options.__varId];
+    } else if (options.title && context.inputs && context.inputs[options.title] !== undefined) {
+        resolved = context.inputs[options.title];
+    } else {
+        return options.defval;
     }
-    if (options.title && context.inputs && context.inputs[options.title] !== undefined) {
-        return context.inputs[options.title];
+
+    // For source-type inputs, a string override like "ohlc4" must be resolved
+    // to the actual price series from context.data. [QF]
+    if (callerType === 'source' && typeof resolved === 'string' && context.data) {
+        const SOURCES: Record<string, (d: any) => any> = {
+            close: (d) => d.close,
+            open: (d) => d.open,
+            high: (d) => d.high,
+            low: (d) => d.low,
+            hl2: (d) => d.hl2,
+            hlc3: (d) => d.hlc3,
+            ohlc4: (d) => d.ohlc4,
+            hlcc4: (d) => d.hlcc4,
+        };
+        const getter = SOURCES[resolved.toLowerCase()];
+        if (getter) return getter(context.data);
     }
-    return options.defval;
+    return resolved;
 }
