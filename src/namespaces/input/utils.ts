@@ -34,6 +34,27 @@ export function parseInputOptions(args: any[]): Partial<InputOptions> {
     }
     const options = parseArgsForPineParams<Partial<InputOptions>>(args, INPUT_SIGNATURES, INPUT_ARGS_TYPES);
     if (varId !== undefined) options.__varId = varId;
+
+    // Fix: `options` array gets mangled by $.param() wrapping — it treats
+    // ["SMA","EMA",...] as time-series data and $.get() returns a single element.
+    // Recover the original array from the named-args object in the raw args.
+    if (options.options !== undefined && !Array.isArray(options.options)) {
+        // Find the named-args bag (last plain object arg)
+        for (let i = args.length - 1; i >= 0; i--) {
+            const a = args[i];
+            if (a && typeof a === 'object' && !Array.isArray(a) && a.options !== undefined) {
+                // a.options may be a Series wrapping the original array
+                const raw = a.options;
+                if (raw && typeof raw === 'object' && 'data' in raw && Array.isArray(raw.data)) {
+                    // Series: data is the original array (treated as time-series)
+                    options.options = raw.data;
+                } else if (Array.isArray(raw)) {
+                    options.options = raw;
+                }
+                break;
+            }
+        }
+    }
     return options;
 }
 
