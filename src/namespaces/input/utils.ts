@@ -37,23 +37,51 @@ export function parseInputOptions(args: any[]): Partial<InputOptions> {
     return options;
 }
 
+/** Unwrap a PineTS Series {data:[...], offset} to its scalar (last element). */
+function unwrapScalar(v: any): any {
+    if (v && typeof v === 'object' && Array.isArray(v.data)) {
+        const d = v.data;
+        return d.length > 0 ? d[d.length - 1] : null;
+    }
+    return v;
+}
+
+/** Unwrap options array — handles Series-wrapped arrays and plain arrays. */
+function unwrapOptions(v: any): any[] | undefined {
+    if (v == null) return undefined;
+    // Series wrapping an array: {data: [[...], [...], ...]} — take last bar's value
+    if (v && typeof v === 'object' && !Array.isArray(v) && Array.isArray(v.data)) {
+        const d = v.data;
+        const last = d.length > 0 ? d[d.length - 1] : null;
+        if (Array.isArray(last)) return last.map(unwrapScalar);
+        // data is flat scalars — use entire data array
+        return d.map(unwrapScalar);
+    }
+    if (Array.isArray(v)) return v.map(unwrapScalar);
+    return undefined;
+}
+
 export function resolveInput(context: any, options: Partial<InputOptions>, callerType: string = 'any') {
     // Register input definition (first call per title only) [QF]
     if (context.inputRegistry) {
         const regKey = options.__varId || options.title || `__anon_${context.inputRegistry.length}`;
         if (!context._inputTitlesSeen.has(regKey)) {
             context._inputTitlesSeen.add(regKey);
+            // Unwrap Series values for metadata — options needs special handling
+            // since it's an array that may be Series-wrapped by $.param().
+            const opts = unwrapOptions(options.options);
             context.inputRegistry.push({
                 type: callerType,
-                title: options.title ?? regKey,
+                title: unwrapScalar(options.title) ?? regKey,
                 varId: options.__varId,
-                defval: options.defval,
-                ...(options.minval !== undefined && { minval: options.minval }),
-                ...(options.maxval !== undefined && { maxval: options.maxval }),
-                ...(options.step !== undefined && { step: options.step }),
-                ...(options.options !== undefined && { options: options.options }),
-                ...(options.group !== undefined && { group: options.group }),
-                ...(options.tooltip !== undefined && { tooltip: options.tooltip }),
+                defval: unwrapScalar(options.defval),
+                ...(options.minval !== undefined && { minval: unwrapScalar(options.minval) }),
+                ...(options.maxval !== undefined && { maxval: unwrapScalar(options.maxval) }),
+                ...(options.step !== undefined && { step: unwrapScalar(options.step) }),
+                ...(opts !== undefined && { options: opts }),
+                ...(options.group !== undefined && { group: unwrapScalar(options.group) }),
+                ...(options.tooltip !== undefined && { tooltip: unwrapScalar(options.tooltip) }),
+                ...(options.inline !== undefined && { inline: unwrapScalar(options.inline) }),
             });
         }
     }
