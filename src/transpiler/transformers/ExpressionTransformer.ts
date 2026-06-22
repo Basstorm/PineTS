@@ -1257,6 +1257,33 @@ export function transformFunctionArgument(arg: any, namespace: string, scopeMana
                     shorthand: false,
                     computed: false,
                 };
+            } else if (prop.value.type === 'ArrayExpression') {
+                // Array literals in named-args objects are metadata (e.g., `options`
+                // lists), NOT time-series data.  Transform element identifiers for
+                // scoping, but do NOT wrap with $.param() — namespace .param() does
+                // Series.from(arr).get(0) which collapses the array to its last
+                // element, destroying the options list.
+                prop.value.elements = prop.value.elements.map((element: any) => {
+                    if (element.type === 'Identifier') {
+                        if (scopeManager.isContextBound(element.name) && !scopeManager.isRootParam(element.name)) {
+                            return element;
+                        }
+                        if (scopeManager.isLocalSeriesVar(element.name)) {
+                            const plainIdentifier = ASTFactory.createIdentifier(element.name);
+                            return ASTFactory.createGetCall(plainIdentifier, 0);
+                        }
+                        return createScopedVariableAccess(element.name, scopeManager);
+                    }
+                    if (element.type === 'CallExpression') {
+                        transformCallExpression(element, scopeManager);
+                        return element;
+                    }
+                    if (element.type === 'MemberExpression') {
+                        transformMemberExpression(element, namespace, scopeManager);
+                        return element;
+                    }
+                    return element;
+                });
             } else if (prop.value.type !== 'Literal') {
                 // For complex expressions (CallExpression, BinaryExpression, etc.), recursively transform them
                 prop.value = transformFunctionArgument(prop.value, namespace, scopeManager);

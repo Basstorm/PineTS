@@ -197,6 +197,28 @@ plot(len, "out")
             const out = ctx.plots['out'].data;
             expect(out[out.length - 1].value).toBe(20); // varId override wins at runtime
         });
+        it('runtime inputRegistry preserves options arrays (not collapsed to scalar)', async () => {
+            const code = `
+//@version=6
+indicator("OptionsTest")
+ma_type = input.string("EMA", "Type", options=["SMA", "EMA", "TMA"])
+plot(close)
+`;
+            const ind = new Indicator(code);
+            const ctx = await new PineTS(makeData(5)).run(ind);
+
+            // inputRegistry is populated at runtime by resolveInput(),
+            // NOT by the AST-based scanInputs(). This verifies the
+            // transpiled code path preserves the options array.
+            const reg = ctx.inputRegistry;
+            expect(reg).toBeDefined();
+            const entry = reg.find((e: any) => e.varId === 'ma_type');
+            expect(entry).toBeDefined();
+            expect(entry.type).toBe('string');
+            expect(entry.defval).toBe('EMA');
+            expect(Array.isArray(entry.options)).toBe(true);
+            expect(entry.options).toEqual(['SMA', 'EMA', 'TMA']);
+        });
     });
 
     describe('prepare() caching', () => {
