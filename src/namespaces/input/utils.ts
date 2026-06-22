@@ -100,6 +100,13 @@ export function resolveInput(context: any, options: Partial<InputOptions>, calle
         return options.defval;
     }
 
+    // For source-type inputs, only STRING overrides ("close", "ohlc4", etc.) are
+    // valid.  A numeric override (e.g. 152.07) is a stale defval leaked from the
+    // frontend ParamDialog — ignore it and fall back to the source default. [QF]
+    if (callerType === 'source' && typeof resolved === 'number') {
+        return options.defval;
+    }
+
     // For source-type inputs, a string override like "ohlc4" must be resolved
     // to the actual price series from context.data. [QF]
     if (callerType === 'source' && typeof resolved === 'string' && context.data) {
