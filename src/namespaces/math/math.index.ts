@@ -3,6 +3,10 @@
 // Run: npm run generate:math-index
 
 import { __eq } from './methods/__eq';
+import { __ge } from './methods/__ge';
+import { __gt } from './methods/__gt';
+import { __le } from './methods/__le';
+import { __lt } from './methods/__lt';
 import { __neq } from './methods/__neq';
 import { abs } from './methods/abs';
 import { acos } from './methods/acos';
@@ -37,6 +41,10 @@ import { toradians } from './methods/toradians';
 
 const methods = {
   __eq,
+  __ge,
+  __gt,
+  __le,
+  __lt,
   __neq,
   abs,
   acos,
@@ -67,12 +75,16 @@ const methods = {
   sum,
   tan,
   todegrees,
-  toradians
+  toradians,
 };
 
 export class PineMath {
   private _cache = {};
   __eq: ReturnType<typeof methods.__eq>;
+  __ge: ReturnType<typeof methods.__ge>;
+  __gt: ReturnType<typeof methods.__gt>;
+  __le: ReturnType<typeof methods.__le>;
+  __lt: ReturnType<typeof methods.__lt>;
   __neq: ReturnType<typeof methods.__neq>;
   abs: ReturnType<typeof methods.abs>;
   acos: ReturnType<typeof methods.acos>;

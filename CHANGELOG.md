@@ -1,5 +1,44 @@
 # Change Log
 
+## [0.9.26] - 2026-06-24 - Strategy update, add context.strategy.cagr
+
+### Added
+
+- **`context.strategy.cagr`**: Report-only Compound Annual Growth Rate (%) of strategy equity over the backtest window, computed once at end-of-run in `finalizeStrategyRun`. Not a Pine built-in — available on `context.strategy` after the run only.
+- **Tests**: `tests/namespaces/strategy/cagr.test.ts` — unit coverage of the CAGR formula and `NaN` edge cases, plus an integration run of the MACD strategy on BINANCE:BTCUSDT 1D (3235 bars) asserting a strategy CAGR of ≈ 2.12%.
+- **Docs**: `docs/strategy.md` gains a Compound Annual Growth Rate (CAGR) section.
+
+---
+
+## [0.9.25] - 2026-06-24 - Hotfix for strategy.entry reversal
+
+### Fixed
+
+- **Pyramiding reversal over-sizing (simultaneous opposite entries)**: Multiple opposite-direction **`strategy.entry`** calls queued on the **same bar** while a pyramided position is open each read the stale pre-fill **`strategy.position_size`** and were each classified as a reversal — so each added the full close-qty (**`|position| + baseQty`**) and bypassed the pyramiding cap. A short **-3** reversed by three long entries reached **+9** in PineTS vs **+3** in TradingView (only the first entry reverses — close 3 + open 1 — and the rest are plain pyramiding adds of qty 1). **`methods/entry.ts`** now **projects the position forward** over same-bar already-queued **market** entry orders (**`Δpos = direction × qty`**, exact even for reversal orders since their qty bakes in the close-qty) before classifying reversal/qty, so only the first opposite entry reverses. The queue-time qty freeze that the **`_base_qty`** margin-call overshoot-split depends on is preserved (a single reversal order is unchanged). (QA "Sim Pyramiding" xlsx, BTCUSDT 1D — **`strategy.position_size`** matches TV across full history; the bug only surfaces when an opposite signal fires while a pyramided position is still open.)
+
+### Added
+
+- **Tests**: **`tests/namespaces/strategy/pyramiding-reversal.test.ts`** — queue-level order sizing (first opposite entry reverses with qty **`|pos|+base`**, subsequent entries are adds of **`base`**), a full fill cycle to position **+3**, and regression guards for three-entries-from-flat and single-reversal (margin-call overshoot intact).
+
+---
+
+## [0.9.24] - 2026-06-22 - `na` Comparison Parity, History on Call Results & Drawing Coordinate Scalars
+
+### Added
+
+- **`math.__lt` / `__le` / `__gt` / `__ge`**: New na-aware relational helpers with TradingView's **1e-10** absolute tie tolerance. Transpiler rewrites `<`, `<=`, `>`, `>=` to these helpers (alongside existing **`__eq` / `__neq`** rewrites).
+- **Tests**: **`tests/namespaces/math/na-comparison.test.ts`** — full Pine-source path for `na` propagation through `==`, `!=`, and relational ops plus float-equality tolerance probes; **`tests/transpiler/history-on-call.test.ts`** — characterization tests for **`EXPR[N]`** on call results (`ta.sma(close, 3)[1]`, reassignment, function return, lookback depth) with regression guards for identifier/var history and tuple destructure.
+
+### Fixed
+
+- **`na` propagation through comparisons**: Any comparison with an **`na`** operand now evaluates to **`na`** ( **`NaN`** ), not boolean **`false`** — matching TradingView (`na(x==x)`, `na(x<1)`, etc.). Observable via **`na()`** / **`nz()`** / arithmetic; branch/ternary outcomes unchanged because **`na`** is falsy. Lockstep with pine-vm-opti fix (commit dcf0531).
+- **Float equality tolerance**: **`__eq` / `__neq`** epsilon tightened **1e-9 → 1e-10** absolute (TV: `1.0+5e-11 == 1.0` → true, `1.0+5e-10 == 1.0` → false).
+- **History operator on call results (`func(...)[N]`)**: Pine **`[]`** on a function-call result is always the history reference, never a tuple index. Transpiler now lowers **`ta.sma(close, 3)[1]`** (and any **`CallExpression[N]`**) to **`$.get($.param(call, …), N)`** — accumulates the per-bar scalar into a series and reads N bars back. Previously the subscript was dropped or left as raw JS indexing on a scalar → **`NaN`**. Return-statement path in **`StatementTransformer`** routes call-result history refs through the same transform.
+- **`chart.point.*` coordinate resolution**: **`ChartHelper`** resolves Series/function args to creation-bar scalars in **`new`**, **`from_index`**, **`from_time`**, and **`now`** — e.g. **`chart.point.from_index(bar_index, close)`** captures the bar's value instead of storing a live series handle.
+- **`line.new()` / `label.new()` coordinate resolution**: **`x1`/`y1`/`x2`/`y2`** and **`x`/`y`** now pass through **`_resolve()`** at creation time, matching **`box.new()`** — bare-series args like **`line.new(x1 = bar_index, …)`** no longer read offset 0 on every bar.
+
+---
+
 ## [0.9.23] - 2026-06-16 - Strategy Pyramiding Parity, Indicator Input varId & Sharpe/Sortino
 
 ### Added
